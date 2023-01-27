@@ -1,0 +1,142 @@
+---
+title: "Case Study 2 Markdown"
+author: "Sam Burch"
+date: "2022-12-12"
+output: html_document
+---
+
+# Preliminary
+```{r}
+popcorn = read.csv('popcorn.csv', header = TRUE)
+popcorn
+
+popcorn$brand = as.factor(popcorn$brand)
+popcorn$time = as.factor(popcorn$time)
+popcorn$rep = as.factor(popcorn$rep)
+
+contrasts(popcorn$brand) = contr.sum(4)
+contrasts(popcorn$time) = contr.sum(3)
+
+
+library(ggplot2)
+ggplot(popcorn, aes(brand, kernels)) + geom_boxplot()
+ggplot(popcorn, aes(time, kernels)) + geom_boxplot()
+```
+  
+  Looks as if brands are very similar and percentage goes down as time increases.
+
+``` {r}
+interaction.plot(popcorn$brand, popcorn$time, popcorn$kernels)
+interaction.plot(popcorn$time, popcorn$brand, popcorn$kernels)
+```
+  
+  There seems to be some interaction here due to the intersection of lines.
+
+
+# Model Selection
+``` {r}
+popcorn_full = lm(kernels ~ brand * time, data = popcorn)
+
+anova(popcorn_full)
+```
+  
+  With the interaction being significant, we stop and select the full model.
+
+
+# Diagnostics
+``` {r}
+#Checks Normality:
+qqnorm(popcorn_full$residuals)
+#Checks Constant Variance:
+plot(popcorn_full$fitted, popcorn_full$residuals, xlab="Fitted", ylab="Residuals")
+```
+  
+  Variance seems to be constant. Normally may have some issues, let us try box-cox.
+
+``` {r}
+library(MASS)
+boxcox(popcorn_full)
+```
+  
+  This suggests lambda = 1, so we will NOT be going through with a transformation.
+
+``` {r}
+#Checking serial dependence
+library(lmtest)
+dwtest(popcorn_full$residuals ~ popcorn$rep)
+```
+  
+  With DW > 2, there is no serial dependence here.
+
+
+# Finding MUs and Alphas
+``` {r}
+summary(popcorn_full)
+
+mu = .3003
+
+
+#A's
+actili = -.0783                               #1
+essential = -.0109                            #2
+orville = .0317                               #3
+(popsecret = -(essential + orville + actili)) #4
+#actili is the lowest for brand
+mu+actili
+
+
+time_90 = .3435                      #1
+time_120 = -.1306                    #2
+(time_180 = -(time_120 + time_90))   #3
+#180 is the lowest for time
+mu+time_180
+
+
+#Interaction A's
+actili_90 = -.1068                                            # (1-1)
+essential_90 = .0071                                          # (2-1)
+orville_90 = .0364                                            # (3-1)
+(popsecret_90 = -(actili_90 + essential_90 + orville_90))     # (4-1)
+
+
+actili_120 = .0521                                            # (1-2)
+essential_120 = -.0184                                        # (2-2)
+orville_120 = -.0035                                          # (3-2)
+(popsecret_120 = -(actili_120 + essential_120 + orville_120)) # (4-2)
+
+
+(actili_180 = -(actili_90 + actili_120))                      # (1-3)
+(essential_180 = -(essential_90 + essential_120))             # (2-3)
+(orville_180 = -(orville_90 + orville_120))                   # (3-3)
+(popsecret_180 = -(actili_180 + essential_180 + orville_180)) # (4-3)
+
+
+#OK, but these interaction combinations cannot be interpreted.
+```
+
+
+# Family Tests
+``` {r}
+popcorn_aov = aov(kernels ~ brand * time, data = popcorn)
+
+(tukey_popcorn = TukeyHSD(popcorn_aov, 'brand:time'))
+plot(tukey_popcorn)
+#Shows 9 are NOT statistically significant, so we cannot say there is a 
+#difference of how much they affect the percentage of unpopped kernels 
+#between the following:
+
+#essential_120 & actili_120
+#popsecret_180 & actili_120
+#popsecret_180 & essential_120
+#popsecret_120 & orville_120
+
+#essential_180 & actili_180*
+#orville_180 & essential_180*
+#orville_180 & actili_180*
+#popsecret_180 & essential_180
+#popsecret_180 & orville_180
+```
+
+  
+  Based on the output, brand Actili and time 180 interaction results in the
+smallest percentage of unpopped kernels compared to every other interaction. Although this is the case, the difference between actili_180 and both essential_180 & orville_180 was not statistically significant.Thus, we can say that either of these three produce the lowest percentage. Note there are also a series of differences that were not statistically significant, so that one can choose either of the brand combinations with time 180 and Actili or Essential with time 120 and there is no statistically significant difference between such. Thus, any of these could lead to the lowest lowest percentage of kernels unpopped.
